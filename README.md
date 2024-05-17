@@ -1,6 +1,4 @@
-# JCON Configuration Data Format
-
-License: Creative Commons Zero 1.0 Universal
+# JCON - JSON Configuration-Oriented Notation
 
 JCON is a superset of JSON that defines JSON-equivalent values, designed for 
 use in configuration files. JCON has the following motivating principles:
@@ -8,14 +6,13 @@ use in configuration files. JCON has the following motivating principles:
   * JCON files should be convenient for humans to write.
   * JCON files should be pleasant for humans to read.
   * JSON must be valid JCON syntax in any context.
-  * The result of parsing a JCON file must be a JSON-compatible value (no
-    additional data types, no metadata, etc).
+  * The result of parsing a JCON file must be a JSON-compatible value
   * JCON parsing should not be significantly more difficult than JSON parsing
 
 The JSON spec is, in some ways, a marvel of expressive simplicity. It almost
 invites you to write your own parser. JCON aspires to keep a similar degree of 
 simplicity in the specification, while enabling many more affordances for 
-humans to read and write it. Other reasonably sane assumptions have been made.
+humans to read and write it.
 
 A JCON file might look very JSON-like, with minor differences:
 
@@ -31,9 +28,9 @@ A JCON file might look very JSON-like, with minor differences:
 
       // My badass Norton Commander color scheme
       skin: {
-        fg: "#ff88ff"
-        bg: "#000088"
-        bold: "#ffffff"
+        fg: 0xff88ff
+        bg: 0x000088
+        bold: 0xffffff
       }
     }
 
@@ -57,9 +54,9 @@ equivalent to the previous one:
 
     [skin]        // My badass Norton Commander color scheme
     
-    fg        = #ff88ff
-    bg        = #000088
-    bold      = #ffffff
+    fg        = 0xff_88_ff
+    bg        = 0x00_00_88
+    bold      = 0xff_ff_ff
 
 JCON offers a number of extensions to the JSON specification. Importantly, the 
 extensions do not change the result of parsing a JCON file; a valid JCON file, 
@@ -145,11 +142,10 @@ as integer decimal values.
 
 ## Separators in Numbers
 
-The underscore `_` codepoint may be used as a separator in any type of number,
-provided only that each separator must be preceded _and_ followed by 
-a digit of the number. Separators are purely cosmetic, and do not imply anything
-about the value of the digits they separate. All separators are discarded before
-determining the value of a number.
+The underscore `_` codepoint may be used as a separator in any type of number. 
+Separators may be used anywhere within the number. They are purely cosmetic, and 
+do not imply anything about the value of the digits they separate. All 
+separators are discarded before determining the value of a number.
  
 So, the following are all valid numbers:
 
@@ -170,11 +166,11 @@ name/value pair, you may instead use an unquoted name.
 
 Unquoted names must begin with an identifier-like or number-like
 codepoint, namely one of `a-zA-Z_$0-9-`. However they may be continued with any 
-codepoints except `:`, `=`, `,`, ` ` (however no control codepoints are 
+codepoints except `:`, `=`, `,`, ` ` (also no control codepoints are 
 allowed.) This means, for example, that any name containing whitespace must be 
 quoted. There is no escape sequence or other method to represent non-literal 
-codepoints in an unquoted name; just use a regular quoted string for the name 
-if necessary.
+codepoints in an unquoted name; use a regular quoted string for the name 
+if needed.
 
 Unquoted name:
 
@@ -187,13 +183,14 @@ Unquoted name:
 Some examples of unquoted names:
 
     { 
-        fancy: "pants", ur-a: "monster", -moz-crap: "whatever"
+        fancy: "pants", ur-a: "monster", -moz-crap: "implicit"
         0: 1, 1: 1
 
         // using assignment syntax
         feeble[0] = minded
-        -flags = -i, -d, --fast-math
-        2 = 2
+        -flags = -i, -d, --fast-math     // btw this is a string, not an array
+        -opts = [ "-i", "-d", "--fast-math" ]    // this is an array
+        2 = 2                   // resolves like { ... "2": 2, ... }
         3 = 3
         4 = 5
         5 = 8
@@ -250,6 +247,12 @@ terminator instead of a comma. For example:
         style: "webhook"
         base-url: "https://logsink.metalcoder.com"
     }
+    fibbo: [
+        1,1,2
+        3,5,8
+        13,21
+        34,55
+    ] // btw you should hate yourself for doing this
 
 ## Comments
 
@@ -511,131 +514,6 @@ uses an unquoted name to disambiguate the heredoc terminator:
 Note that the whitespace at the beginning of each line in the JCON heredoc
 above would be included in the string that it is parsed into.
 
-## Appendix 1: Notes on Parsing JCON
+## Final Notes
 
-A primary goal of the JCON specification is to keep the complexity of parsing 
-a JCON file to within the same order of magnitude as parsing a JSON file. On
-the surface, there are many new syntatic elements and some ambiguity that 
-can only be resolved by examining the entirety of a line. The specification
-has been carefully laid out to make it easier for a practical parser to make
-decisions on the fly without needing to backtrack any more than is needed for
-JSON.
-
-Some hints for how to handle the trickier bits in a stream-oriented parser
-follow. If you're using a parser compiler, none of this will be helpful because
-the grammar accounts for all of these cases already.
-
-### Restrictions
-
-Some of the restrictions on the use of particular syntaxes are present purely
-to make it easier to catch inadvertent errors in the data, while some are 
-necessary to prevent ambiguity in the results of parsing. It is strongly 
-reccommended to implement all of the restrictions in the specification.
-
-Some examples of restrictions that are not strictly necessary for disambiguation 
-but help ensure that some human mistakes are caught:
-
-  * No whitespace or `,` in an unquoted name
-  * No `=` allowed at the beginning of an unquoted value
-  * No `//` or `/*` allowed within unquoted names or values
-  * No heredocs as section names or as names in name/value pairs
-
-The unquoted names and values are hugely valuable for their ease of use, but
-they do come with the potential for valid-but-unexpected results.
-
-### Lines
-
-JCON handles lines somewhat differently from most other text formats. The line
-termination codepoint sequences are explicitly defined; you cannot rely (at 
-least not entirely) on your language runtime or OS definition of "line" when 
-parsing the file.
-
-It might be easiest to read the file in a literal or "binary" mode that 
-preserves the line terminator codepoints in the data, and do the line 
-terminator detection yourself. Here is one way to approach that that does not 
-rely on peeking ahead in the data:
-
-  * Whenever a `<CR>` or `<LF>` codepoint is encountered, end the current line
-    and save the codepoint you found.
-  * If you are at the beginning of a line and you read a `<CR>` or `<LF>`, 
-    check to see whether it is different from the saved codepoint from the
-    previous line. If it is, silently absorb it. Otherwise end the current 
-    line (you have an empty line).
-
-### Initial Data
-
-At the beginning of a JCON file, once you've passed any whitespace and comments,
-there are four possibilities for the first element you will encounter:
-
-  - `[` starts a section (not an array because JCON files are always objects)
-  - `"` begins a quoted name or heredoc
-  - `a-zA-Z_$0-9-` begin an unquoted name
-  - `{` is an explicit definition of the top-level object
-  - any other code point would be an error
-
-If the first element you encounter is not a section, then there will be no
-sections in the file (or if there are it's an error).
-
-### Unquoted Values
-
-Unquoted values are only valid when using assignment syntax. There are just
-too many weird and ambiguous situations that can arise if unquoted values
-are allowed in a regular name/value pair, or in a normal array definition.
-
-Unquoted values can be tricky because they can be ambiguous until the end of
-the value has been identified. A simplistic but complete approach might look 
-like this, starting after the `=` that denotes assignment syntax:
-
-  * bypass any whitespace
-  * depending on the next character, you might not have an unquoted value:
-    * if `"`, begin a string or heredoc
-    * if `[`, begin an array (may continue to following lines)
-    * if `{`, begin an object (may continue to following lines)
-    * if `=` emit an error
-  * otherwise, begin defining an unquoted value string
-  * the string is complete once you encounter
-    * a line terminator
-    * end of file, or 
-    * horizontal whitespace followed by the `//` codepoints
-  * trim any whitespace off the end of the unquoted value
-  * if the string is empty, emit a missing value error
-  * if the string contains the `//` or `/*` sequences, emit an error
-  * if it is `true`, `false`, or `null` then substitute the JSON value
-  * if it looks like a valid JCON number then re-parse it as a number
-  * otherwise the string you have is the value
-
-There are some odd-looking edge cases with comments:
-
-    not_a_comment=//error, unquoted value may not contain `//`
-    is_a_comment= //this *is* a comment (and a missing value error)
-    not_a_file =  //c/Users/this_is_also_a_comment_and_error.txt
-    is_a_file = "//c/Users/gotta_quote_it.txt"  // filename
-    probably_wrong =  rm //c/Users/this_part_is_a_comment.txt
-
-## Appendix 2: Roadmap
-
-### Future
-
-This specification is a work in progress. The chosen features have been 
-carefully winnowed from the universe of possible extensions to JSON, with the 
-goal of introducing some useful legibility aids with the least possible 
-additional complexity.
-
-Possible future additions, if suitably simple, unambiguous, and expressive 
-implementations can be found, include:
-
-  * Indented Heredocs
-  * Value References
-
-### Past
-
-Some ideas that have died a noble death and should be left to rest in peace:
-
-  * Indented Collection Definition
-  * Line Continuation Syntax
-  * Preprocessing Macros
-  * Binary Blobs
-  * Type Metadata Syntax
-
-
-
+License: Creative Commons Zero 1.0 Universal
